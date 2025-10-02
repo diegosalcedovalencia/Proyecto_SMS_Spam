@@ -28,25 +28,36 @@ Sistema de detección de SMS spam con modelo de machine learning, aplicación we
 
 ## ⚡ Instalación Rápida
 
-### Opción 1: Docker (Recomendado)
+### Opción 1: Demo Interactiva (RECOMENDADO) 🚀
 ```bash
 # Clonar el repositorio
-git clone https://gitlab.com/tu_usuario/sms-spam-detection.git
+git clone https://github.com/nicolnsrubio-hash/sms-spam-detection.git
 cd sms-spam-detection
 
-# Ejecutar con Docker
-docker-compose up -d
+# Instalar dependencias básicas
+pip install streamlit pandas numpy
+
+# Ejecutar aplicación de demostración
+python -m streamlit run demo_app.py
 
 # Acceder a http://localhost:8501
 ```
 
-### Opción 2: Instalación Local
+### Opción 2: Instalación Completa
 ```bash
-# Instalar dependencias
+# Instalar todas las dependencias
 pip install -r requirements.txt
 
-# Ejecutar la aplicación
+# Ejecutar aplicación completa (requiere modelos entrenados)
 streamlit run src/app.py
+```
+
+### Opción 3: Docker (Producción)
+```bash
+# Ejecutar con Docker
+docker-compose up -d
+
+# Acceder a http://localhost:8501
 ```
 
 ## 💻 Desarrollo Local
@@ -54,35 +65,56 @@ streamlit run src/app.py
 ### Estructura del Proyecto
 ```
 sms-spam-detection/
-├── src/                          # Código fuente de la aplicación
-│   ├── app.py                    # Aplicación Streamlit principal
-│   ├── models/                   # Modelos de ML
-│   │   ├── __init__.py
-│   │   ├── baseline_model.py     # Modelo baseline (TF-IDF + Naive Bayes)
-│   │   └── distilbert_model.py   # Modelo DistilBERT (avanzado)
-│   └── utils/                    # Utilidades
-│       ├── __init__.py
-│       ├── data_processor.py     # Procesamiento de datos
-│       └── model_utils.py        # Utilidades para modelos
-├── data/                         # Datasets
-│   ├── raw/                      # Datos originales
-│   └── processed/                # Datos procesados
-├── models/                       # Modelos entrenados guardados
-├── notebooks/                    # Jupyter notebooks para experimentación
-├── tests/                        # Tests unitarios
-├── deployment/                   # Configuración de deployment
-│   ├── docker-compose.dev.yml    # Docker Compose para desarrollo
-│   ├── docker-compose.prod.yml   # Docker Compose para producción
+├── demo_app.py                   # 🚀 APLICACIÓN DEMO (Ejecutar primero!)
+├── sms_spam_detector/            # 📦 Paquete principal modular
+│   ├── api/                      # APIs REST y gRPC
+│   │   ├── app.py                # Aplicación Streamlit completa
+│   │   ├── app_baseline_only.py  # Solo modelo baseline
+│   │   ├── app_simple.py         # Versión simplificada
+│   │   └── grpc_server.py        # Servidor gRPC
+│   ├── models/                   # Modelos de Machine Learning
+│   │   ├── baseline_model.py     # TF-IDF + Regresión Logística
+│   │   ├── distilbert_model.py   # Modelo DistilBERT avanzado
+│   │   └── trained/              # Modelos preentrenados
+│   ├── utils/                    # Utilidades y preprocesamiento
+│   │   ├── data_preprocessing.py # Limpieza y preparación de datos
+│   │   └── mlflow_integration.py # Integración con MLFlow
+│   ├── evaluation/               # Evaluación de modelos
+│   │   └── model_evaluation.py   # Métricas y análisis
+│   └── data/                     # Datasets organizados
+│       ├── raw/                  # Datos originales
+│       └── processed/            # Datos procesados
+├── scripts/                      # Scripts de entrenamiento y evaluación
+│   ├── train_models.py           # Entrenar todos los modelos
+│   ├── train_distilbert.py       # Entrenar solo DistilBERT
+│   └── evaluate_baseline_only.py # Evaluar modelo baseline
+├── configs/                      # Configuraciones centralizadas
+│   ├── config.yaml               # Configuración principal
+│   ├── requirements.txt          # Dependencias específicas
+│   └── setup.py                  # Setup del paquete
+├── docs/                         # Documentación completa
+│   ├── README.md                 # Documentación principal
+│   ├── INSTALL.md                # Instrucciones de instalación
+│   └── LICENSE                   # Licencia del proyecto
+├── deployment/                   # Deployment y CI/CD
+│   ├── docker-compose.yml        # Compose para desarrollo
+│   ├── docker-compose.prod.yml   # Compose para producción
+│   ├── Dockerfile.prod           # Imagen Docker optimizada
 │   ├── scripts/                  # Scripts de automatización
 │   │   ├── generate-ssh-keys.sh  # Generador de claves SSH
 │   │   ├── validate-cicd-setup.sh # Validador de configuración
 │   │   └── setup-server.sh       # Configuración de servidor
-│   ├── ENVIRONMENT_VARIABLES.md  # Documentación de variables
-│   └── GITLAB_CICD_MANUAL.md     # Manual completo de CI/CD
-├── .gitlab-ci.yml                # Pipeline CI/CD de GitLab
-├── Dockerfile                    # Imagen Docker para producción
-├── Dockerfile.dev                # Imagen Docker para desarrollo
-└── requirements.txt              # Dependencias Python
+│   ├── ENVIRONMENT_VARIABLES.md  # Variables de entorno
+│   └── GITLAB_CICD_MANUAL.md     # Manual completo CI/CD
+├── src/                          # Aplicaciones adicionales
+│   ├── app.py                    # App principal alternativa
+│   └── app_fixed.py              # Versión corregida
+├── .gitlab-ci.yml                # Pipeline CI/CD automatizado
+├── Dockerfile                    # Imagen Docker principal
+├── Dockerfile.dev                # Imagen para desarrollo
+├── requirements.txt              # Dependencias Python principales
+├── test_complete_project.py      # Tests completos del proyecto
+└── test_project.py               # Tests básicos
 ```
 
 ### Desarrollo con Docker
@@ -209,7 +241,32 @@ ssh deploy@tu-servidor "docker save sms-spam-detector > /tmp/backup.tar"
 
 ## 🎯 Uso de la Aplicación
 
-### Interfaz Web
+### 📱 Aplicación de Demostración
+
+La aplicación `demo_app.py` es perfecta para probar el sistema sin configuraciones complejas:
+
+**🌟 Características:**
+- ✅ **Sin dependencias pesadas**: Solo requiere Streamlit, Pandas, Numpy
+- ✅ **Funciona inmediatamente**: No necesita modelos preentrenados
+- ✅ **Detección inteligente**: Reglas heurísticas + palabras clave (ES/EN)
+- ✅ **Interfaz completa**: Visualizaciones, métricas, ejemplos
+- ✅ **Información del proyecto**: Arquitectura, CI/CD, tecnologías
+
+**🚀 Ejecución rápida:**
+```bash
+pip install streamlit pandas numpy
+python -m streamlit run demo_app.py
+```
+
+**📊 Funcionalidades incluidas:**
+- Análisis en tiempo real de mensajes SMS
+- 8 ejemplos predefinidos (HAM y SPAM)
+- Detección por palabras clave en español e inglés
+- Scoring inteligente con caracteres especiales
+- Gráficos de probabilidades interactivos
+- Información detallada del análisis
+
+### 🏭 Interfaz Web Completa
 
 1. **Clasificación Individual**: Introduce un SMS para clasificar
 2. **Clasificación Masiva**: Carga archivo CSV con múltiples SMS
