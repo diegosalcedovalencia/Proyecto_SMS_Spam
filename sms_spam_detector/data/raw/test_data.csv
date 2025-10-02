@@ -1,0 +1,23 @@
+label,message,message_clean,label_binary
+spam,🚨 VIRUS DETECTADO en tu celular. Descarga antivirus GRATIS: virus-fake.com,virus detectado en tu celular descarga antivirus gratis virusfakecom,1
+spam,BELLEZA ETERNA: Crema antiarrugas milagrosa. 50% OFF: belleza-fake.com,belleza eterna crema antiarrugas milagrosa 50 off bellezafakecom,1
+ham,¿Dónde quedamos de encontrarnos mañana?,dnde quedamos de encontrarnos maana,0
+spam,⚡ ENERGÍA INFINITA! Batería externa que nunca se agota. Solo $19: bateria-fake.com,energa infinita batera externa que nunca se agota solo 19 bateriafakecom,1
+spam,¡ÚLTIMO DÍA! Oferta especial 90% descuento. Link: bit.ly/oferta-falsa,ltimo da oferta especial 90 descuento link bitlyofertafalsa,1
+ham,"Gracias por esta mañana, fue maravilloso estar contigo",gracias por esta maana fue maravilloso estar contigo,0
+ham,¿Puedes acompañarme al doctor mañana por la mañana?,puedes acompaarme al doctor maana por la maana,0
+ham,"Hola querido, tu número móvil ha sido seleccionado para recibir",hola querido tu nmero mvil ha sido seleccionado para recibir,0
+spam,"ROPA DE MARCA original al 95% OFF. Nike, Adidas, Gucci: ropa-fake.com",ropa de marca original al 95 off nike adidas gucci ropafakecom,1
+spam,URGENT! Tu cuenta será cerrada. Haz clic aquí: http://enlace-falso.com,urgent tu cuenta ser cerrada haz clic aqu httpenlacefalsocom,1
+ham,"Gracias por la invitación, pero ya tengo planes",gracias por la invitacin pero ya tengo planes,0
+spam,LOTERÍA NACIONAL: Ganaste $100000. Para cobrar envía LOTERIA al 8888,lotera nacional ganaste 100000 para cobrar enva loteria al 8888,1
+ham,"Está bien, te llamo más tarde cuando termine la reunión",est bien te llamo ms tarde cuando termine la reunin,0
+spam,💍 JOYAS DE ORO al 90% descuento. Liquidación total: joyas-fake.com,joyas de oro al 90 descuento liquidacin total joyasfakecom,1
+ham,"Perdón, llamo después, estoy en una reunión",perdn llamo despus estoy en una reunin,0
+ham,No puedo atender el teléfono ahora. Por favor envía un mensaje,no puedo atender el telfono ahora por favor enva un mensaje,0
+ham,Te veo mañana en la oficina. Que tengas buenas noches,te veo maana en la oficina que tengas buenas noches,0
+ham,¿Dónde estás? Estoy en casa esperándote,dnde ests estoy en casa esperndote,0
+ham,Mi mamá pregunta si vienes a cenar el domingo,mi mam pregunta si vienes a cenar el domingo,0
+spam,¡HOY ÚLTIMO DÍA! PlayStation 5 GRATIS. Participa enviando JUEGO al 3333,hoy ltimo da playstation 5 gratis participa enviando juego al 3333,1
+spam,¡SORTEO MILLONARIO! Participa GRATIS. Envía SUERTE al 6666. Premios hasta $50000,sorteo millonario participa gratis enva suerte al 6666 premios hasta 50000,1
+spam,ALERTA: Tu tarjeta de crédito ha sido bloqueada. Llama YA al 800-123-456,alerta tu tarjeta de crdito ha sido bloqueada llama ya al 800123456,1

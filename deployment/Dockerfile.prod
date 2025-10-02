@@ -1,0 +1,168 @@
+# =================================================================
+# Dockerfile Multi-stage para SMS Spam Detection - PRODUCCIÓN
+# Optimizado para tamaño mínimo y máximo rendimiento
+# =================================================================
+
+# ------------------------------------------------------------------
+# STAGE 1: BUILD DEPENDENCIES (Builder stage)
+# ------------------------------------------------------------------
+FROM python:3.10-slim as builder
+
+# Argumentos de build para metadata
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+# Labels de metadata
+LABEL maintainer="SMS Spam Detection Team"
+LABEL description="SMS Spam Detection Application - Production"
+LABEL version=${VERSION}
+LABEL build_date=${BUILD_DATE}
+LABEL vcs_ref=${VCS_REF}
+
+# Configurar variables de entorno para Python
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Instalar dependencias del sistema necesarias para build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crear usuario no-root para seguridad
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid 1000 --no-create-home appuser
+
+# Crear directorio de trabajo
+WORKDIR /app
+
+# Copiar archivos de requirements
+COPY configs/requirements.txt ./requirements.txt
+
+# Crear ambiente virtual e instalar dependencias Python
+RUN python -m venv /app/venv && \
+    /app/venv/bin/pip install --upgrade pip && \
+    /app/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# ------------------------------------------------------------------
+# STAGE 2: PRODUCTION IMAGE (Runtime stage)
+# ------------------------------------------------------------------
+FROM python:3.10-slim as production
+
+# Copiar argumentos de build
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+# Labels de metadata
+LABEL maintainer="SMS Spam Detection Team"
+LABEL description="SMS Spam Detection Application - Production Runtime"
+LABEL version=${VERSION}
+LABEL build_date=${BUILD_DATE}
+LABEL vcs_ref=${VCS_REF}
+
+# Variables de entorno para producción
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH="/app:$PYTHONPATH" \
+    PATH="/app/venv/bin:$PATH" \
+    ENVIRONMENT=production \
+    STREAMLIT_SERVER_PORT=8501 \
+    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+    STREAMLIT_SERVER_HEADLESS=true
+
+# Instalar solo dependencias mínimas de runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get autoremove -y \
+    && apt-get clean
+
+# Crear usuario no-root
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash appuser
+
+# Crear directorios necesarios
+RUN mkdir -p /app/logs /app/data /app/models && \
+    chown -R appuser:appuser /app
+
+# Establecer directorio de trabajo
+WORKDIR /app
+
+# Copiar el ambiente virtual desde el builder stage
+COPY --from=builder --chown=appuser:appuser /app/venv ./venv
+
+# Copiar código fuente de la aplicación
+COPY --chown=appuser:appuser sms_spam_detector/ ./sms_spam_detector/
+COPY --chown=appuser:appuser configs/ ./configs/
+COPY --chown=appuser:appuser README.md ./
+
+# Crear archivos __init__.py si no existen (para imports)
+RUN touch sms_spam_detector/__init__.py
+
+# Cambiar a usuario no-root
+USER appuser
+
+# Verificar que las dependencias están instaladas correctamente
+RUN python -c "import streamlit, pandas, numpy, scikit_learn, plotly; print('✅ Dependencias verificadas')"
+
+# Verificar que los imports del proyecto funcionan
+RUN python -c "
+import sys; 
+sys.path.append('/app'); 
+from sms_spam_detector.models.baseline_model import BaselineModel; 
+from sms_spam_detector.utils.data_preprocessing import DataPreprocessor; 
+print('✅ Imports del proyecto verificados')
+"
+
+# Crear script de entrada optimizado
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "🚀 Iniciando SMS Spam Detection App..."\n\
+echo "📊 Verificando estructura del proyecto..."\n\
+python -c "\
+import sys, os; \
+sys.path.append(\"/app\"); \
+from pathlib import Path; \
+critical_files = [\"sms_spam_detector/api/app_baseline_only.py\", \"configs/config.yaml\"]; \
+missing = [f for f in critical_files if not Path(f).exists()]; \
+exit(1) if missing else print(\"✅ Estructura OK\")\
+"\n\
+echo "🌐 Iniciando servidor Streamlit..."\n\
+exec streamlit run sms_spam_detector/api/app_baseline_only.py \\\n\
+    --server.port=$STREAMLIT_SERVER_PORT \\\n\
+    --server.address=$STREAMLIT_SERVER_ADDRESS \\\n\
+    --server.headless=true \\\n\
+    --browser.gatherUsageStats=false \\\n\
+    --logger.level=info\n\
+' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# Exponer puerto de la aplicación
+EXPOSE 8501
+
+# Healthcheck para verificar que la aplicación esté corriendo
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+# Configurar punto de entrada
+ENTRYPOINT ["/app/entrypoint.sh"]
+
+# =================================================================
+# Información adicional del contenedor
+# =================================================================
+# Tamaño esperado: ~200-300MB (vs >1GB sin multistage)
+# Usuario: appuser (no-root para seguridad)
+# Puerto: 8501
+# Healthcheck: Incluido
+# Optimizaciones: 
+#   - Multistage build reduce tamaño
+#   - Cache de pip deshabilitado
+#   - Limpieza de apt
+#   - Usuario no-root
+#   - Variables de entorno optimizadas
+# =================================================================

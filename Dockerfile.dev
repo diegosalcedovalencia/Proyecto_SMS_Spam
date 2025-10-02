@@ -1,0 +1,56 @@
+# Development Dockerfile for SMS Spam Detection
+# Includes development tools and hot-reload capabilities
+
+FROM python:3.10-slim
+
+# Set environment variables for development
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll
+
+# Install system dependencies including development tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    vim \
+    htop \
+    tree \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt /app/requirements.txt
+
+# Install Python dependencies with development extras
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install \
+        ipython \
+        jupyter \
+        black \
+        flake8 \
+        mypy \
+        pre-commit \
+        watchdog
+
+# Copy source code
+COPY . /app
+
+# Create directories
+RUN mkdir -p /app/logs /app/models /app/data
+
+# Expose port for Streamlit
+EXPOSE 8501
+
+# Expose port for Jupyter (if needed)
+EXPOSE 8888
+
+# Volume for development (allows hot-reload)
+VOLUME ["/app"]
+
+# Default command for development with hot-reload
+CMD ["streamlit", "run", "src/app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.fileWatcherType=poll"]

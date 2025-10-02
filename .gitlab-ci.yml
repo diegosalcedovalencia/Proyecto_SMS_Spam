@@ -1,0 +1,351 @@
+# Pipeline CI/CD para SMS Spam Detection
+# Automatiza testing, building y deployment en DigitalOcean
+# Ejecuta automáticamente en cada push al repositorio
+
+# Definición de stages del pipeline
+stages:
+  - test          # Ejecuta tests unitarios y validaciones
+  - build         # Construye imagen Docker
+  - deploy        # Despliega en DigitalOcean Droplet
+
+# Variables globales para todo el pipeline
+variables:
+  # Configuración de Docker
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  
+  # Información de la aplicación
+  APP_NAME: "sms-spam-detector"
+  APP_PORT: "8501"
+  CONTAINER_NAME: "sms-spam-app"
+  
+  # Configuración de imagen Docker
+  DOCKER_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+  DOCKER_IMAGE_LATEST: "$CI_REGISTRY_IMAGE:latest"
+
+# Servicios necesarios para el pipeline
+services:
+  - docker:20.10.16-dind
+
+# Configuración base para jobs que usan Docker
+.docker-base: &docker-base
+  image: docker:20.10.16
+  before_script:
+    - docker --version
+    - echo "Autenticando con GitLab Container Registry..."
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+
+# ===============================================
+# STAGE 1: TESTING
+# ===============================================
+
+# Job para ejecutar tests unitarios
+test-unit:
+  stage: test
+  image: python:3.10-slim
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - .cache/pip/
+      - venv/
+  before_script:
+    - echo "🧪 Iniciando tests unitarios..."
+    - apt-get update -qq && apt-get install -y -qq git
+    - python -m venv venv
+    - source venv/bin/activate || . venv\\Scripts\\activate
+    - python -m pip install --upgrade pip
+    - pip install -r configs/requirements.txt
+    - pip install pytest pytest-cov pytest-mock
+  script:
+    - echo "📋 Ejecutando tests de estructura del proyecto..."
+    - python -c "
+      import sys
+      from pathlib import Path
+      
+      # Verificar estructura de archivos críticos
+      critical_files = [
+          'sms_spam_detector/__init__.py',
+          'sms_spam_detector/models/baseline_model.py',
+          'sms_spam_detector/utils/data_preprocessing.py',
+          'sms_spam_detector/api/app_baseline_only.py',
+          'configs/config.yaml',
+          'deployment/Dockerfile'
+      ]
+      
+      missing = []
+      for file in critical_files:
+          if not Path(file).exists():
+              missing.append(file)
+      
+      if missing:
+          print('❌ Archivos faltantes:', missing)
+          sys.exit(1)
+      else:
+          print('✅ Estructura de proyecto válida')
+      "
+    - echo "🔍 Ejecutando tests de importación..."
+    - python -c "
+      import sys
+      sys.path.append('.')
+      try:
+          from sms_spam_detector.models.baseline_model import BaselineModel
+          from sms_spam_detector.utils.data_preprocessing import DataPreprocessor
+          print('✅ Imports exitosos')
+      except Exception as e:
+          print('❌ Error en imports:', e)
+          sys.exit(1)
+      "
+    - echo "📊 Ejecutando tests de configuración..."
+    - python -c "
+      import yaml
+      from pathlib import Path
+      
+      config_path = Path('configs/config.yaml')
+      if not config_path.exists():
+          print('❌ Archivo de configuración no encontrado')
+          exit(1)
+      
+      with open(config_path) as f:
+          config = yaml.safe_load(f)
+      
+      required_keys = ['data', 'baseline', 'paths', 'app']
+      for key in required_keys:
+          if key not in config:
+              print(f'❌ Clave faltante en config: {key}')
+              exit(1)
+      
+      print('✅ Configuración válida')
+      "
+  artifacts:
+    expire_in: 1 hour
+    paths:
+      - venv/
+  only:
+    - main
+    - merge_requests
+    - develop
+
+# Job para validar sintaxis de Dockerfiles
+test-docker:
+  stage: test
+  <<: *docker-base
+  script:
+    - echo "🐳 Validando Dockerfiles..."
+    - |
+      for dockerfile in deployment/Dockerfile*; do
+        if [ -f "$dockerfile" ]; then
+          echo "Validando $dockerfile..."
+          docker run --rm -i hadolint/hadolint < "$dockerfile" || echo "Warning: Dockerfile issues found"
+        fi
+      done
+    - echo "✅ Validación de Docker completada"
+  only:
+    - main
+    - merge_requests
+    - develop
+
+# ===============================================
+# STAGE 2: BUILD
+# ===============================================
+
+# Job para construir imagen Docker
+build-docker:
+  stage: build
+  <<: *docker-base
+  script:
+    - echo "🔨 Construyendo imagen Docker..."
+    - echo "Commit: $CI_COMMIT_SHORT_SHA"
+    - echo "Registry: $CI_REGISTRY_IMAGE"
+    
+    # Construir imagen con multi-stage build
+    - |
+      docker build \
+        --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+        --build-arg VCS_REF=$CI_COMMIT_SHORT_SHA \
+        --build-arg VERSION=$CI_COMMIT_REF_NAME \
+        -t $DOCKER_IMAGE \
+        -t $DOCKER_IMAGE_LATEST \
+        -f deployment/Dockerfile.prod .
+    
+    # Verificar que la imagen se construyó correctamente
+    - docker images | grep $CI_REGISTRY_IMAGE
+    
+    # Push de la imagen al registry
+    - echo "📤 Subiendo imagen al registry..."
+    - docker push $DOCKER_IMAGE
+    - docker push $DOCKER_IMAGE_LATEST
+    
+    # Limpiar imágenes locales para ahorrar espacio
+    - docker rmi $DOCKER_IMAGE || true
+    - docker rmi $DOCKER_IMAGE_LATEST || true
+    
+    - echo "✅ Build completado exitosamente"
+  only:
+    - main
+    - develop
+  dependencies:
+    - test-unit
+
+# ===============================================
+# STAGE 3: DEPLOY
+# ===============================================
+
+# Job para deployment en producción (DigitalOcean)
+deploy-production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - echo "🚀 Iniciando deployment en producción..."
+    - apk add --no-cache openssh-client bash curl
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - echo "📡 Conectando al servidor DigitalOcean..."
+    - |
+      ssh $DEPLOY_USER@$DEPLOY_HOST "
+        set -e
+        echo '🛑 Parando contenedor anterior si existe...'
+        docker stop $CONTAINER_NAME 2>/dev/null || true
+        docker rm $CONTAINER_NAME 2>/dev/null || true
+        
+        echo '🗑️  Limpiando imágenes no utilizadas...'
+        docker image prune -f
+        
+        echo '📥 Descargando nueva imagen...'
+        echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+        docker pull $DOCKER_IMAGE
+        
+        echo '🚀 Iniciando nueva aplicación...'
+        docker run -d \
+          --name $CONTAINER_NAME \
+          --restart unless-stopped \
+          -p $APP_PORT:8501 \
+          -e ENVIRONMENT=production \
+          -e APP_NAME='$APP_NAME' \
+          $DOCKER_IMAGE
+        
+        echo '🔍 Verificando que la aplicación esté corriendo...'
+        sleep 10
+        if docker ps | grep -q $CONTAINER_NAME; then
+          echo '✅ Aplicación desplegada exitosamente'
+          echo '🌐 Aplicación disponible en: http://$DEPLOY_HOST:$APP_PORT'
+        else
+          echo '❌ Error en el despliegue'
+          docker logs $CONTAINER_NAME
+          exit 1
+        fi
+        
+        echo '🧹 Limpieza final...'
+        docker logout $CI_REGISTRY
+      "
+    - echo "🎉 Deployment completado!"
+    - echo "🌐 La aplicación está disponible en: http://$DEPLOY_HOST:$APP_PORT"
+  environment:
+    name: production
+    url: http://$DEPLOY_HOST:$APP_PORT
+  when: manual  # Requiere aprobación manual para producción
+  only:
+    - main
+  dependencies:
+    - build-docker
+
+# Job para deployment automático en desarrollo
+deploy-staging:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - echo "🧪 Iniciando deployment en staging..."
+    - apk add --no-cache openssh-client bash curl
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - echo "📡 Conectando al servidor staging..."
+    - |
+      ssh $DEPLOY_USER@$STAGING_HOST "
+        set -e
+        echo '🛑 Parando contenedor de staging anterior...'
+        docker stop ${CONTAINER_NAME}-staging 2>/dev/null || true
+        docker rm ${CONTAINER_NAME}-staging 2>/dev/null || true
+        
+        echo '📥 Descargando imagen de desarrollo...'
+        echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+        docker pull $DOCKER_IMAGE
+        
+        echo '🚀 Iniciando aplicación en staging...'
+        docker run -d \
+          --name ${CONTAINER_NAME}-staging \
+          --restart unless-stopped \
+          -p $((APP_PORT + 1000)):8501 \
+          -e ENVIRONMENT=staging \
+          -e APP_NAME='$APP_NAME-staging' \
+          $DOCKER_IMAGE
+        
+        sleep 5
+        if docker ps | grep -q ${CONTAINER_NAME}-staging; then
+          echo '✅ Staging desplegado exitosamente'
+        else
+          echo '❌ Error en staging'
+          docker logs ${CONTAINER_NAME}-staging
+          exit 1
+        fi
+      "
+  environment:
+    name: staging
+    url: http://$STAGING_HOST:$((APP_PORT + 1000))
+  only:
+    - develop
+  dependencies:
+    - build-docker
+
+# ===============================================
+# JOBS ESPECIALES
+# ===============================================
+
+# Job para rollback en caso de problemas
+rollback:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - echo "🔄 Ejecutando rollback..."
+    - |
+      ssh $DEPLOY_USER@$DEPLOY_HOST "
+        docker stop $CONTAINER_NAME || true
+        docker rm $CONTAINER_NAME || true
+        docker run -d \
+          --name $CONTAINER_NAME \
+          --restart unless-stopped \
+          -p $APP_PORT:8501 \
+          $DOCKER_IMAGE_LATEST
+        echo '✅ Rollback completado'
+      "
+  when: manual
+  only:
+    - main
+
+# Job para limpiar registry (ejecutar ocasionalmente)
+cleanup:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "🧹 Limpieza de imágenes antiguas..."
+    - echo "Este job debe configurarse para limpiar imágenes del registry"
+    - echo "Se ejecutará limpieza local en el servidor"
+  when: manual
+  only:
+    - main
